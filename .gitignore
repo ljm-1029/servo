@@ -1,0 +1,21 @@
+# Keil build outputs
+keil/Objects/
+keil/Listings/
+keil/*.log
+keil/*.uvguix.*
+keil/.vscode/
+
+# Local/generated metadata
+.metadata/
+*.codex_bak_*
+*.tmp
+*.bak
+
+# Common embedded build artifacts
+*.o
+*.d
+*.axf
+*.elf
+*.hex
+*.map
+*.lst
