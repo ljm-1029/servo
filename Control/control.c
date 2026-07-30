@@ -298,6 +298,16 @@ static void Ball_PlusMinus5Stop(void)
     Servo_SetAngle(SERVO_CENTER_ANGLE);
 }
 
+static uint8_t Ball_RawPositionInDeadband(int16_t target_cm100)
+{
+    if (!g_k230_ball.valid)
+    {
+        return 0;
+    }
+
+    return (myabs((int)g_k230_ball_cm100 - target_cm100) <= BALL_DEADBAND_CM100) ? 1U : 0U;
+}
+
 static void Ball_PlusMinus5Task(void)
 {
     uint8_t updated;
@@ -323,9 +333,9 @@ static void Ball_PlusMinus5Task(void)
     {
         target_cm100 = BALL_TASK_POS_CM100;
         updated = BallServoController_Update(&Ball_PlusMinus5_Controller, target_cm100, 0U);
-        if (updated &&
-            myabs(Ball_PlusMinus5_Controller.last_error_cm100) <= BALL_DEADBAND_CM100)
+        if (Ball_RawPositionInDeadband(BALL_TASK_POS_CM100))
         {
+            Ball_PlusMinus5_Controller.integral_cm100 = 0;
             Ball_PlusMinus5_State = BALL_PM5_GO_NEG;
         }
     }
