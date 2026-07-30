@@ -14,21 +14,25 @@ float Velocity_KI = 180.0f;
 #define VELOCITY_PI_DEADBAND 0.010f
 
 #define SERVO_CENTER_ANGLE    93U
-#define SERVO_RIGHT_MAX_ANGLE 113U
-#define SERVO_LEFT_MAX_ANGLE  73U
-#define BALL_TARGET_CM100     0
-#define BALL_DEADBAND_CM100   50
+#define SERVO_RIGHT_MAX_ANGLE 123U
+#define SERVO_LEFT_MAX_ANGLE  63U
+#define BALL_TARGET_CM100     600
+#define BALL_DEADBAND_CM100   20
 #define BALL_STOP_SPEED_CM100 8
 #define BALL_CONTROL_TICKS    4U
 #define BALL_NO_FRAME_TICKS   80U
 #define BALL_TASK_POS_CM100   500
 #define BALL_TASK_NEG_CM100   (-500)
 #define BALL_TASK_TIMEOUT_TICKS ((uint16_t)(CONTROL_FREQUENCY * 5U))
-#define BALL_SERVO_KP_NUM     5
+#define BALL_SERVO_KP_NUM     25
 #define BALL_SERVO_KP_DEN     100
-#define BALL_SERVO_KD_NUM     500
+#define BALL_SERVO_KD_NUM     450
 #define BALL_SERVO_KD_DEN     100
-#define BALL_MIN_CORRECT_ANGLE10 50
+#define BALL_SERVO_KI_NUM     1
+#define BALL_SERVO_KI_DEN     1200
+#define BALL_INTEGRAL_WINDOW_CM100 400
+#define BALL_INTEGRAL_LIMIT_CM100  9000
+#define BALL_MIN_CORRECT_ANGLE10 10
 #define BALL_HOLD_TRIM_TICKS  40U
 #define BUTTON_DEBOUNCE_TICKS 4U
 #define BUZZER_BEEP_TICKS     40U
@@ -54,6 +58,7 @@ typedef struct
     int16_t hold_angle10;
     int16_t last_error_cm100;
     int16_t last_speed_cm100;
+    int32_t integral_cm100;
 } BallServoController_t;
 
 typedef enum
@@ -135,6 +140,7 @@ static void BallServoController_Reset(BallServoController_t *controller)
     controller->hold_angle10 = (int16_t)SERVO_CENTER_ANGLE * 10;
     controller->last_error_cm100 = 0;
     controller->last_speed_cm100 = 0;
+    controller->integral_cm100 = 0;
 }
 
 static uint8_t BallServoController_Update(BallServoController_t *controller,
@@ -170,6 +176,7 @@ static uint8_t BallServoController_Update(BallServoController_t *controller,
         Servo_SetAngle((uint8_t)(controller->hold_angle10 / 10));
         controller->have_last_pos = 0;
         controller->hold_trim_ticks = 0;
+        controller->integral_cm100 = 0;
         return 0;
     }
 
@@ -191,6 +198,23 @@ static uint8_t BallServoController_Update(BallServoController_t *controller,
     controller->last_pos_cm100 = controller->filtered_pos_cm100;
     controller->last_error_cm100 = error_cm100;
     controller->last_speed_cm100 = speed_cm100;
+
+    if (allow_hold_trim && myabs(error_cm100) <= BALL_INTEGRAL_WINDOW_CM100)
+    {
+        controller->integral_cm100 += error_cm100;
+        if (controller->integral_cm100 > BALL_INTEGRAL_LIMIT_CM100)
+        {
+            controller->integral_cm100 = BALL_INTEGRAL_LIMIT_CM100;
+        }
+        else if (controller->integral_cm100 < -BALL_INTEGRAL_LIMIT_CM100)
+        {
+            controller->integral_cm100 = -BALL_INTEGRAL_LIMIT_CM100;
+        }
+    }
+    else
+    {
+        controller->integral_cm100 = 0;
+    }
 
     if (myabs(error_cm100) <= BALL_DEADBAND_CM100 &&
         myabs(speed_cm100) <= BALL_STOP_SPEED_CM100 &&
@@ -218,7 +242,8 @@ static uint8_t BallServoController_Update(BallServoController_t *controller,
         controller->hold_trim_ticks = 0;
         servo_delta10 =
             ((int32_t)BALL_SERVO_KP_NUM * error_cm100 * 10) / BALL_SERVO_KP_DEN +
-            ((int32_t)BALL_SERVO_KD_NUM * speed_cm100 * 10) / BALL_SERVO_KD_DEN;
+            ((int32_t)BALL_SERVO_KD_NUM * speed_cm100 * 10) / BALL_SERVO_KD_DEN +
+            ((int32_t)BALL_SERVO_KI_NUM * controller->integral_cm100 * 10) / BALL_SERVO_KI_DEN;
         if (myabs(error_cm100) > BALL_DEADBAND_CM100 &&
             servo_delta10 > -BALL_MIN_CORRECT_ANGLE10 &&
             servo_delta10 < BALL_MIN_CORRECT_ANGLE10)
